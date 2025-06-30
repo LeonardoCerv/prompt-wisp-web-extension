@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "AI Prompt Saver",
+  "version": "1.0",
+  "description": "Save and manage prompts from various AI LLMs",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "https://chat.deepseek.com/*",
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://claude.ai/*",
+    "https://grok.com/*",
+    "https://www.meta.ai/*",
+    "https://copilot.microsoft.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Prompt Saver"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.deepseek.com/*",
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*",
+        "https://grok.com/*",
+        "https://www.meta.ai/*",
+        "https://copilot.microsoft.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

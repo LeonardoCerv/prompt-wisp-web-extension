@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <img class="header-icon" src="icons/wisp.svg" alt="Header Icon" />
+      <h1>Prompt Wisp Extension</h1>
+    </div>
+
+    <!-- Save Section -->
+    <div class="section">
+      <div class="btn-group">
+        <button id="savePrompt" class="btn btn-primary btn-full">
+          <img class="icon" src="icons/save.svg" alt="Save Icon" />
+          Save Current Prompt
+        </button>
+      </div>
+      
+      <div class="btn-group" style="margin-top: 12px;">
+        <button id="exportPrompts" class="btn btn-secondary">
+          <img class="icon" src="icons/download.svg" alt="Export Icon" />
+          Export
+        </button>
+        <button id="clearAll" class="btn btn-destructive">
+          <img class="icon" src="icons/trash.svg" alt="Clear Icon" />
+          Clear All
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Message -->
+    <div id="status" class="status hidden"></div>
+
+    <!-- Prompts List -->
+    <div class="section prompt-list">
+      <div class="section-title">
+        <img class="icon" src="icons/library-big.svg" alt="Prompts Icon" />
+        Saved Prompts
+      </div>
+      
+      <div class="prompt-list-content" id="promptsList">
+        <div class="empty-state">
+          <img class="icon" src="icons/book-dashed.svg" alt="Empty Icon" />
+          <div class="empty-state-text">No prompts saved yet</div>
+          <div class="empty-state-subtext">Click "Save Current Prompt" to get started</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
