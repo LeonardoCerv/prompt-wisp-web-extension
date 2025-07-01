@@ -11,30 +11,33 @@ container.style = `
   z-index: 9999;
 `;
 
-// Get current prompt text with site-specific detection
-function getCurrentPrompt() {
+// Site-specific input detection
+function getSiteInput() {
   const hostname = window.location.hostname;
   
-  // ChatGPT detection
+  // ChatGPT
   if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
-    const chatGPTInput = document.querySelector('#prompt-textarea[contenteditable="true"]');
-    if (chatGPTInput) return chatGPTInput.textContent;
+    return document.querySelector('#prompt-textarea[contenteditable="true"]') || 
+           document.querySelector('textarea[data-id="root"]');
   }
   
-  // Claude detection
+  // Claude
   if (hostname.includes('claude.ai')) {
-    const claudeInput = document.querySelector('.ProseMirror[contenteditable="true"]');
-    if (claudeInput) return claudeInput.textContent;
+    return document.querySelector('.ProseMirror[contenteditable="true"]');
   }
   
-  // Gemini detection
+  // Gemini
   if (hostname.includes('gemini.google.com')) {
-    const geminiInput = document.querySelector('.ql-editor[contenteditable="true"]');
-    if (geminiInput) return geminiInput.textContent;
+    return document.querySelector('.ql-editor[contenteditable="true"]');
   }
   
-  // DeepSeek/fallback detection
-  const input = document.querySelector('textarea, [contenteditable="true"]');
+  // DeepSeek/fallback
+  return document.querySelector('textarea, [contenteditable="true"]');
+}
+
+// Get current prompt text
+function getCurrentPrompt() {
+  const input = getSiteInput();
   if (!input) return null;
   
   if (input.tagName === 'TEXTAREA') {
@@ -43,56 +46,52 @@ function getCurrentPrompt() {
   return input.textContent || input.innerText;
 }
 
-// Paste text into input field with site-specific handling
-function pasteText(text) {
-  const hostname = window.location.hostname;
-  let success = false;
-  
-  // ChatGPT paste
-  if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
-    const chatGPTInput = document.querySelector('#prompt-textarea[contenteditable="true"]');
-    if (chatGPTInput) {
-      chatGPTInput.textContent = text;
-      chatGPTInput.focus();
-      success = true;
+// Enhanced paste function with reliable fallback
+async function pasteWithFallback(text) {
+  const input = getSiteInput();
+  if (!input) {
+    await navigator.clipboard.writeText(text);
+    return { success: false, action: 'copied' };
+  }
+
+  try {
+    // Save current selection
+    const selection = window.getSelection();
+    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    
+    // Set the text
+    if (input.tagName === 'TEXTAREA') {
+      input.value = text;
+      // Trigger change events
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+      input.textContent = text;
+      // Trigger input events for rich editors
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    
+    // Focus and place cursor at end
+    input.focus();
+    if (input.contentEditable === 'true') {
+      const newRange = document.createRange();
+      newRange.selectNodeContents(input);
+      newRange.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    }
+    
+    return { success: true, action: 'pasted' };
+  } catch (error) {
+    console.error('Paste failed, falling back to copy:', error);
+    try {
+      await navigator.clipboard.writeText(text);
+      return { success: false, action: 'copied' };
+    } catch (copyError) {
+      console.error('Copy also failed:', copyError);
+      return { success: false, action: 'failed' };
     }
   }
-  
-  // Claude paste
-  else if (hostname.includes('claude.ai')) {
-    const claudeInput = document.querySelector('.ProseMirror[contenteditable="true"]');
-    if (claudeInput) {
-      claudeInput.textContent = text;
-      claudeInput.focus();
-      success = true;
-    }
-  }
-  
-  // Gemini paste
-  else if (hostname.includes('gemini.google.com')) {
-    const geminiInput = document.querySelector('.ql-editor[contenteditable="true"]');
-    if (geminiInput) {
-      geminiInput.textContent = text;
-      geminiInput.focus();
-      success = true;
-    }
-  }
-  
-  // DeepSeek/fallback paste
-  else {
-    const input = document.querySelector('textarea, [contenteditable="true"]');
-    if (input) {
-      if (input.tagName === 'TEXTAREA') {
-        input.value = text;
-      } else {
-        input.textContent = text;
-      }
-      input.focus();
-      success = true;
-    }
-  }
-  
-  return success;
 }
 
 // Copy button
@@ -106,12 +105,17 @@ copyBtn.style = `
   border-radius: 4px;
   cursor: pointer;
 `;
-copyBtn.onclick = () => {
+copyBtn.onclick = async () => {
   const prompt = getCurrentPrompt();
   if (prompt) {
-    navigator.clipboard.writeText(prompt);
-    copyBtn.textContent = 'Copied!';
-    setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+    try {
+      await navigator.clipboard.writeText(prompt);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+    } catch (error) {
+      copyBtn.textContent = 'Failed!';
+      setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+    }
   }
 };
 
@@ -198,14 +202,16 @@ pasteBtn.onclick = async () => {
         cursor: pointer;
         border-bottom: 1px solid #eee;
       `;
-      item.onclick = () => {
-        if (!pasteText(prompt.text)) {
-          navigator.clipboard.writeText(prompt.text);
+      item.onclick = async () => {
+        const result = await pasteWithFallback(prompt.text);
+        if (result.success) {
+          item.textContent = 'Pasted!';
+        } else if (result.action === 'copied') {
           item.textContent = 'Copied to clipboard!';
-          setTimeout(() => dropdown.style.display = 'none', 1000);
         } else {
-          dropdown.style.display = 'none';
+          item.textContent = 'Failed!';
         }
+        setTimeout(() => dropdown.style.display = 'none', 1000);
       };
       dropdown.appendChild(item);
     });
