@@ -1,26 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "AI Prompt Saver",
+  "name": "Prompt Wisp",
   "version": "1.0",
-  "description": "Save and manage prompts from various AI LLMs",
+  "description": "Save and paste AI prompts",
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
-    "contextMenus"
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://chat.deepseek.com/*",
     "https://chatgpt.com/*",
     "https://gemini.google.com/*",
-    "https://claude.ai/*",
-    "https://grok.com/*",
-    "https://www.meta.ai/*",
-    "https://copilot.microsoft.com/*"
+    "https://claude.ai/*"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "AI Prompt Saver"
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
@@ -28,16 +24,17 @@
         "https://chat.deepseek.com/*",
         "https://chatgpt.com/*",
         "https://gemini.google.com/*",
-        "https://claude.ai/*",
-        "https://grok.com/*",
-        "https://www.meta.ai/*",
-        "https://copilot.microsoft.com/*"
+        "https://claude.ai/*"
       ],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ],
-  "background": {
-    "service_worker": "background.js"
-  }
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
+
