@@ -11,8 +11,23 @@ container.style = `
   z-index: 9999;
 `;
 
-// Get current prompt text
+// Get current prompt text with site-specific detection
 function getCurrentPrompt() {
+  const hostname = window.location.hostname;
+  
+  // Claude detection
+  if (hostname.includes('claude.ai')) {
+    const claudeInput = document.querySelector('.ProseMirror[contenteditable="true"]');
+    if (claudeInput) return claudeInput.textContent;
+  }
+  
+  // Gemini detection
+  if (hostname.includes('gemini.google.com')) {
+    const geminiInput = document.querySelector('.ql-editor[contenteditable="true"]');
+    if (geminiInput) return geminiInput.textContent;
+  }
+  
+  // DeepSeek/fallback detection
   const input = document.querySelector('textarea, [contenteditable="true"]');
   if (!input) return null;
   
@@ -20,6 +35,48 @@ function getCurrentPrompt() {
     return input.value;
   }
   return input.textContent || input.innerText;
+}
+
+// Paste text into input field with site-specific handling
+function pasteText(text) {
+  const hostname = window.location.hostname;
+  let success = false;
+  
+  // Claude paste
+  if (hostname.includes('claude.ai')) {
+    const claudeInput = document.querySelector('.ProseMirror[contenteditable="true"]');
+    if (claudeInput) {
+      claudeInput.textContent = text;
+      claudeInput.focus();
+      success = true;
+    }
+  }
+  
+  // Gemini paste
+  else if (hostname.includes('gemini.google.com')) {
+    const geminiInput = document.querySelector('.ql-editor[contenteditable="true"]');
+    if (geminiInput) {
+      geminiInput.textContent = text;
+      geminiInput.focus();
+      success = true;
+    }
+  }
+  
+  // DeepSeek/fallback paste
+  else {
+    const input = document.querySelector('textarea, [contenteditable="true"]');
+    if (input) {
+      if (input.tagName === 'TEXTAREA') {
+        input.value = text;
+      } else {
+        input.textContent = text;
+      }
+      input.focus();
+      success = true;
+    }
+  }
+  
+  return success;
 }
 
 // Copy button
@@ -126,19 +183,12 @@ pasteBtn.onclick = async () => {
         border-bottom: 1px solid #eee;
       `;
       item.onclick = () => {
-        const input = document.querySelector('textarea, [contenteditable="true"]');
-        if (input) {
-          if (input.tagName === 'TEXTAREA') {
-            input.value = prompt.text;
-          } else {
-            input.textContent = prompt.text;
-          }
-          input.focus();
-          dropdown.style.display = 'none';
-        } else {
+        if (!pasteText(prompt.text)) {
           navigator.clipboard.writeText(prompt.text);
           item.textContent = 'Copied to clipboard!';
           setTimeout(() => dropdown.style.display = 'none', 1000);
+        } else {
+          dropdown.style.display = 'none';
         }
       };
       dropdown.appendChild(item);
