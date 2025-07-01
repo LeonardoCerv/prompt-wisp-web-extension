@@ -15,6 +15,12 @@ container.style = `
 function getCurrentPrompt() {
   const hostname = window.location.hostname;
   
+  // ChatGPT detection
+  if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
+    const chatGPTInput = document.querySelector('#prompt-textarea[contenteditable="true"]');
+    if (chatGPTInput) return chatGPTInput.textContent;
+  }
+  
   // Claude detection
   if (hostname.includes('claude.ai')) {
     const claudeInput = document.querySelector('.ProseMirror[contenteditable="true"]');
@@ -42,8 +48,18 @@ function pasteText(text) {
   const hostname = window.location.hostname;
   let success = false;
   
+  // ChatGPT paste
+  if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
+    const chatGPTInput = document.querySelector('#prompt-textarea[contenteditable="true"]');
+    if (chatGPTInput) {
+      chatGPTInput.textContent = text;
+      chatGPTInput.focus();
+      success = true;
+    }
+  }
+  
   // Claude paste
-  if (hostname.includes('claude.ai')) {
+  else if (hostname.includes('claude.ai')) {
     const claudeInput = document.querySelector('.ProseMirror[contenteditable="true"]');
     if (claudeInput) {
       claudeInput.textContent = text;
