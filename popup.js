@@ -1,198 +1,302 @@
-document.addEventListener('DOMContentLoaded', async () => {
-  const container = document.getElementById('prompts-container');
-  
-  async function loadPrompts() {
+class PromptWispExtension {
+  constructor() {
+    // Replace with your actual Prompt Wisp domain
+    this.apiBase = 'https://prompt-wisp.vercel.app/'; // Example for local development
+    this.user = null;
+    this.init();
+  }
+
+  async init() {
+    await this.checkAuthStatus();
+    this.setupEventListeners();
+    this.hideLoading();
+  }
+
+  async checkAuthStatus() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: 'checkAuth'
+      }, (response) => {
+        try {
+          if (response && response.success && response.authenticated && response.user) {
+            this.user = response.user;
+            this.showUserSection();
+            this.loadPrompts();
+          } else {
+            this.showAuthSection();
+          }
+          resolve();
+        } catch (error) {
+          console.error('Auth check failed:', error);
+          this.showError('Failed to connect to Prompt Wisp. Please check your connection.');
+          this.showAuthSection();
+          resolve();
+        }
+      });
+    });
+  }
+
+  async authenticate() {
+    return new Promise((resolve, reject) => {
+      const authUrl = `${this.apiBase}/login?extension=true`;
+      
+      chrome.windows.create({
+        url: authUrl,
+        type: 'popup',
+        width: 500,
+        height: 700
+      }, (window) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error('Failed to open authentication window'));
+          return;
+        }
+
+        const checkAuth = async () => {
+          chrome.runtime.sendMessage({
+            action: 'checkAuth'
+          }, (response) => {
+            if (response && response.success && response.authenticated && response.user) {
+              chrome.windows.remove(window.id);
+              this.user = response.user;
+              this.showUserSection();
+              this.loadPrompts();
+              this.showSuccess('Successfully connected to Prompt Wisp!');
+              resolve(response.user);
+            } else {
+              // Check if window still exists
+              chrome.windows.get(window.id, (w) => {
+                if (chrome.runtime.lastError) {
+                  // Window was closed
+                  reject(new Error('Authentication cancelled'));
+                }
+              });
+            }
+          });
+        };
+
+        // Poll every 2 seconds
+        const pollInterval = setInterval(checkAuth, 2000);
+        
+        // Clean up when window is closed
+        chrome.windows.onRemoved.addListener((windowId) => {
+          if (windowId === window.id) {
+            clearInterval(pollInterval);
+            reject(new Error('Authentication cancelled'));
+          }
+        });
+      });
+    });
+  }
+
+  async loadPrompts() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: 'getPromptsFromAPI'
+      }, (response) => {
+        try {
+          if (response && response.success) {
+            console.log('Loaded prompts:', response.prompts);
+            const isLocal = response.source === 'local';
+            this.displayPrompts(response.prompts, isLocal);
+            if (isLocal && response.error) {
+              this.showError('Failed to load prompts from server. Using local prompts.');
+            }
+          } else {
+            console.error('Failed to load prompts:', response?.error);
+            this.showError('Failed to load prompts from server. Using local prompts.');
+            this.loadLocalPrompts();
+          }
+          resolve();
+        } catch (error) {
+          console.error('Failed to load prompts:', error);
+          this.showError('Failed to load prompts from server. Using local prompts.');
+          this.loadLocalPrompts();
+          resolve();
+        }
+      });
+    });
+  }
+
+  async loadLocalPrompts() {
+    // Fallback to local storage if API fails
     const { prompts = [] } = await chrome.storage.local.get('prompts');
+    this.displayPrompts(prompts, true);
+  }
+
+  displayPrompts(prompts, isLocal = false) {
+    const container = document.getElementById('prompts-list');
     
-    if (prompts.length === 0) {
+    if (!prompts || prompts.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
-          No prompts saved yet
+          <p>No prompts found</p>
+          ${isLocal ? '<p style="font-size: 12px; color: #ef4444;">Showing local prompts only</p>' : ''}
         </div>
       `;
       return;
     }
+
+    container.innerHTML = prompts.map(prompt => `
+      <div class="prompt-item" onclick="window.promptWisp.usePrompt( '${this.escapeHtml(prompt.content || prompt.text || "")}')">
+        <div class="prompt-title">${this.escapeHtml(prompt.title || 'Untitled Prompt')}</div>
+        <div class="prompt-preview">${this.escapeHtml((prompt.content || prompt.text || '').substring(0, 100))}${(prompt.content || prompt.text || '').length > 100 ? '...' : ''}</div>
+      </div>
+    `).join('');
     
-    container.innerHTML = '';
-    prompts.forEach(prompt => {
-      const item = document.createElement('div');
-      item.className = 'prompt-item';
-      item.textContent = prompt.text.length > 100 
-        ? prompt.text.substring(0, 100) + '...' 
-        : prompt.text;
+    if (isLocal) {
+      container.insertAdjacentHTML('afterbegin', '<p style="font-size: 12px; color: #ef4444; margin-bottom: 10px;">Showing local prompts only</p>');
+    }
+  }
+
+  async usePrompt(content) {
+    try {
       
-      item.onclick = async () => {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab) return;
-        
-        try {
-          const result = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: (text) => {
-              // Site-specific input detection
-              function getSiteInput() {
-                const hostname = window.location.hostname;
-                
-                // ChatGPT - multiple possible selectors
-                if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
-                  return document.querySelector('#prompt-textarea[contenteditable="true"]') || 
-                         document.querySelector('div[contenteditable="true"].ProseMirror') ||
-                         document.querySelector('textarea[data-id="root"]') ||
-                         document.querySelector('textarea#prompt-textarea');
-                }
-                
-                // Claude
-                if (hostname.includes('claude.ai')) {
-                  return document.querySelector('.ProseMirror[contenteditable="true"]');
-                }
-                
-                // Gemini
-                if (hostname.includes('gemini.google.com')) {
-                  return document.querySelector('.ql-editor[contenteditable="true"]');
-                }
-                
-                // DeepSeek/fallback
-                return document.querySelector('textarea, [contenteditable="true"]');
-              }
-
-              // Special handling for ChatGPT's ProseMirror editor
-              function handleChatGPTInput(input, text) {
-                try {
-                  // Clear existing content
-                  input.innerHTML = '';
-                  
-                  // Create paragraphs for each line break
-                  const paragraphs = text.split('\n').filter(p => p.trim() !== '');
-                  if (paragraphs.length === 0) {
-                    const p = document.createElement('p');
-                    p.textContent = text;
-                    input.appendChild(p);
-                  } else {
-                    paragraphs.forEach(para => {
-                      const p = document.createElement('p');
-                      p.textContent = para;
-                      input.appendChild(p);
-                    });
-                  }
-                  
-                  // Focus and place cursor at end
-                  input.focus();
-                  const range = document.createRange();
-                  range.selectNodeContents(input);
-                  range.collapse(false);
-                  const selection = window.getSelection();
-                  selection.removeAllRanges();
-                  selection.addRange(range);
-                  
-                  // Trigger necessary events
-                  const event = new Event('input', { bubbles: true });
-                  input.dispatchEvent(event);
-                  
-                  return true;
-                } catch (error) {
-                  console.error('ChatGPT paste failed:', error);
-                  return false;
-                }
-              }
-
-              // Enhanced paste function with reliable fallback
-              async function pasteWithFallback(text) {
-                const input = getSiteInput();
-                if (!input) {
-                  await navigator.clipboard.writeText(text);
-                  return { success: false, action: 'copied' };
-                }
-
-                try {
-                  const hostname = window.location.hostname;
-                  let pasteSuccess = false;
-                  
-                  // Special handling for ChatGPT
-                  if (hostname.includes('chatgpt.com') || hostname.includes('chat.openai.com')) {
-                    pasteSuccess = handleChatGPTInput(input, text);
-                  } 
-                  // Standard handling for other sites
-                  else {
-                    if (input.tagName === 'TEXTAREA') {
-                      input.value = text;
-                      input.dispatchEvent(new Event('input', { bubbles: true }));
-                      input.dispatchEvent(new Event('change', { bubbles: true }));
-                    } else {
-                      input.textContent = text;
-                      input.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                    
-                    // Focus and place cursor at end
-                    input.focus();
-                    if (input.contentEditable === 'true') {
-                      const selection = window.getSelection();
-                      const newRange = document.createRange();
-                      newRange.selectNodeContents(input);
-                      newRange.collapse(false);
-                      selection.removeAllRanges();
-                      selection.addRange(newRange);
-                    }
-                    pasteSuccess = true;
-                  }
-                  
-                  if (pasteSuccess) {
-                    return { success: true, action: 'pasted' };
-                  }
-                } catch (error) {
-                  console.error('Paste failed:', error);
-                }
-
-                // Fallback to copy if paste failed
-                try {
-                  await navigator.clipboard.writeText(text);
-                  return { success: false, action: 'copied' };
-                } catch (copyError) {
-                  console.error('Copy also failed:', copyError);
-                  return { success: false, action: 'failed' };
-                }
-              }
-
-              // Execute the paste function
-              return pasteWithFallback(text);
-            },
-            args: [prompt.text]
-          });
-
-          // Handle the result
-          const pasteResult = result[0].result;
-          if (pasteResult.success) {
-            item.textContent = 'Pasted!';
-          } else if (pasteResult.action === 'copied') {
-            item.textContent = 'Copied to clipboard!';
-          } else {
-            item.textContent = 'Failed!';
-          }
-          
-          setTimeout(() => {
-            item.textContent = prompt.text.length > 100 
-              ? prompt.text.substring(0, 100) + '...' 
-              : prompt.text;
-          }, 2000);
-          
-        } catch (error) {
-          // If script injection fails, copy to clipboard as fallback
-          try {
-            await navigator.clipboard.writeText(prompt.text);
-            item.textContent = 'Copied to clipboard!';
-          } catch (copyError) {
-            item.textContent = 'Failed!';
-          }
-          setTimeout(() => {
-            item.textContent = prompt.text.length > 100 
-              ? prompt.text.substring(0, 100) + '...' 
-              : prompt.text;
-          }, 2000);
+      // Send to content script
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab) {
+        this.showError('No active tab found');
+        return;
+      }
+      
+      chrome.tabs.sendMessage(tab.id, {
+        action: 'insertPrompt',
+        content: content
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          this.showError('Failed to insert prompt. Try copying manually.');
+        } else if (response && response.success) {
+          this.showSuccess('Prompt inserted successfully!');
+        } else {
+          this.showError('Prompt copied to clipboard as fallback');
         }
-      };
+      });
       
-      container.appendChild(item);
+      // Close popup after a short delay
+      setTimeout(() => window.close(), 1500);
+    } catch (error) {
+      console.error('Failed to use prompt:', error);
+      this.showError('Failed to use prompt');
+    }
+  }
+
+  async savePrompt(content, title) {
+    if (!content || !content.trim()) {
+      this.showError('No content to save');
+      return;
+    }
+
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: 'savePromptToAPI',
+        content: content,
+        title: title || 'Untitled Prompt',
+        site: 'extension-popup'
+      }, (response) => {
+        try {
+          if (response && response.success) {
+            if (response.location === 'server') {
+              this.showSuccess('Prompt saved to server!');
+            } else {
+              this.showSuccess('Prompt saved locally!');
+            }
+            this.loadPrompts(); // Refresh the list
+          } else {
+            console.error('Failed to save prompt:', response?.error);
+            this.showError('Failed to save prompt');
+          }
+          resolve();
+        } catch (error) {
+          console.error('Failed to save prompt:', error);
+          this.showError('Failed to save prompt');
+          resolve();
+        }
+      });
     });
   }
-  
-  loadPrompts();
+
+  logout() {
+    this.user = null;
+    this.showAuthSection();
+    // Clear any stored auth data
+    chrome.storage.local.clear();
+    this.showSuccess('Logged out successfully');
+  }
+
+  setupEventListeners() {
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      try {
+        this.showLoading();
+        await this.authenticate();
+      } catch (error) {
+        console.error('Authentication failed:', error);
+        this.showError('Authentication failed. Please try again.');
+        this.hideLoading();
+      }
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      this.logout();
+    });
+
+    document.getElementById('refresh-prompts').addEventListener('click', async () => {
+      this.showLoading();
+      await this.loadPrompts();
+      this.hideLoading();
+    });
+  }
+
+  showAuthSection() {
+    document.getElementById('auth-section').style.display = 'block';
+    document.getElementById('user-section').style.display = 'none';
+  }
+
+  showUserSection() {
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('user-section').style.display = 'block';
+    document.getElementById('user-email').textContent = this.user.email || 'Unknown user';
+  }
+
+  showLoading() {
+    document.getElementById('loading').style.display = 'block';
+  }
+
+  hideLoading() {
+    document.getElementById('loading').style.display = 'none';
+  }
+
+  showError(message) {
+    const errorEl = document.getElementById('error-message');
+    errorEl.textContent = message;
+    errorEl.style.display = 'block';
+    document.getElementById('success-message').style.display = 'none';
+    
+    setTimeout(() => {
+      errorEl.style.display = 'none';
+    }, 5000);
+  }
+
+  showSuccess(message) {
+    const successEl = document.getElementById('success-message');
+    successEl.textContent = message;
+    successEl.style.display = 'block';
+    document.getElementById('error-message').style.display = 'none';
+    
+    setTimeout(() => {
+      successEl.style.display = 'none';
+    }, 3000);
+  }
+
+  escapeHtml(unsafe) {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+}
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  window.promptWisp = new PromptWispExtension();
 });

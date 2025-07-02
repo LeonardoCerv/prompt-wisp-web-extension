@@ -5,27 +5,178 @@
   <style>
     body {
       width: 300px;
-      padding: 10px;
-      font-family: Arial, sans-serif;
-    }
-    .prompt-item {
-      padding: 8px;
-      border-bottom: 1px solid #eee;
-      cursor: pointer;
-    }
-    .prompt-item:hover {
-      background-color: #f5f5f5;
-    }
-    .empty-state {
       padding: 20px;
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+    }
+    
+    .auth-section { 
+      margin-bottom: 20px; 
       text-align: center;
-      color: #888;
+    }
+    
+    .user-info { 
+      background: #f0f9ff; 
+      padding: 15px; 
+      border-radius: 8px; 
+      margin-bottom: 15px;
+    }
+    
+    .prompts-section { 
+      max-height: 250px; 
+      overflow-y: auto; 
+    }
+    
+    button { 
+      padding: 10px 16px; 
+      margin: 5px 0; 
+      cursor: pointer; 
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    
+    #login-btn {
+      background: #3b82f6;
+      color: white;
+      width: 100%;
+    }
+    
+    #login-btn:hover {
+      background: #2563eb;
+    }
+    
+    #logout-btn {
+      background: #ef4444;
+      color: white;
+      font-size: 12px;
+      padding: 6px 12px;
+    }
+    
+    #logout-btn:hover {
+      background: #dc2626;
+    }
+    
+    #refresh-prompts {
+      background: #10b981;
+      color: white;
+      width: 100%;
+      margin-top: 10px;
+    }
+    
+    #refresh-prompts:hover {
+      background: #059669;
+    }
+    
+    .prompt-item { 
+      margin: 8px 0; 
+      padding: 10px; 
+      background: #f8f9fa; 
+      border-radius: 6px; 
+      cursor: pointer;
+      border-left: 3px solid #3b82f6;
+      transition: background-color 0.2s;
+    }
+    
+    .prompt-item:hover {
+      background: #e9ecef;
+    }
+    
+    .prompt-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #1f2937;
+    }
+    
+    .prompt-preview {
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.4;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #6b7280;
+    }
+    
+    .error {
+      color: #ef4444;
+      background: #fef2f2;
+      padding: 10px;
+      border-radius: 6px;
+      text-align: center;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    
+    .success {
+      color: #10b981;
+      background: #f0fdf4;
+      padding: 10px;
+      border-radius: 6px;
+      text-align: center;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 20px;
+      color: #6b7280;
+    }
+
+    .user-email {
+      font-size: 14px;
+      color: #374151;
+      margin-bottom: 10px;
+    }
+
+    h3 {
+      margin: 0 0 15px 0;
+      color: #1f2937;
+      font-size: 18px;
+    }
+
+    h4 {
+      margin: 15px 0 10px 0;
+      color: #374151;
+      font-size: 16px;
     }
   </style>
 </head>
 <body>
-  <h3>Saved Prompts</h3>
-  <div id="prompts-container"></div>
+  <div id="app">
+    <div id="loading" class="loading">Loading...</div>
+    
+    <div id="auth-section" class="auth-section" style="display: none;">
+      <h3>Connect to Prompt Wisp</h3>
+      <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">
+        Sign in to sync your prompts across devices
+      </p>
+      <button id="login-btn">Login / Sign Up</button>
+    </div>
+    
+    <div id="user-section" style="display: none;">
+      <div class="user-info">
+        <h3>Welcome!</h3>
+        <p id="user-email" class="user-email"></p>
+        <button id="logout-btn">Logout</button>
+      </div>
+      
+      <div class="prompts-section">
+        <h4>Your Prompts</h4>
+        <div id="prompts-list"></div>
+        <button id="refresh-prompts">Refresh Prompts</button>
+      </div>
+    </div>
+    
+    <div id="error-message" class="error" style="display: none;"></div>
+    <div id="success-message" class="success" style="display: none;"></div>
+  </div>
+  
   <script src="popup.js"></script>
 </body>
 </html>

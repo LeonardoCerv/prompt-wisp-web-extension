@@ -1,3 +1,104 @@
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'insertPrompt') {
+    insertPromptIntoPage(request.content);
+    sendResponse({ success: true });
+  }
+});
+
+function insertPromptIntoPage(content) {
+  // Try to find common text input elements
+  const selectors = [
+    'textarea[placeholder*="prompt"]',
+    'textarea[placeholder*="message"]', 
+    'input[type="text"][placeholder*="prompt"]',
+    'div[contenteditable="true"]',
+    'textarea',
+    'input[type="text"]'
+  ];
+
+  let targetElement = null;
+  
+  for (const selector of selectors) {
+    const elements = document.querySelectorAll(selector);
+    for (const element of elements) {
+      if (element.offsetParent !== null) { // Check if visible
+        targetElement = element;
+        break;
+      }
+    }
+    if (targetElement) break;
+  }
+
+  if (targetElement) {
+    // Insert the prompt
+    if (targetElement.tagName === 'DIV') {
+      targetElement.textContent = content;
+    } else {
+      targetElement.value = content;
+    }
+    
+    // Trigger input events
+    targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+    targetElement.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // Focus the element
+    targetElement.focus();
+    
+    // Show confirmation
+    showInsertConfirmation();
+  } else {
+    // Copy to clipboard as fallback
+    navigator.clipboard.writeText(content).then(() => {
+      showCopyConfirmation();
+    });
+  }
+}
+
+function showInsertConfirmation() {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #10b981;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    z-index: 10000;
+    font-family: system-ui;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  `;
+  notification.textContent = '✓ Prompt inserted!';
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.remove();
+  }, 3000);
+}
+
+function showCopyConfirmation() {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #3b82f6;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    z-index: 10000;
+    font-family: system-ui;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  `;
+  notification.textContent = '📋 Prompt copied to clipboard!';
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.remove();
+  }, 3000);
+}
+
 // Floating buttons container
 const container = document.createElement('div');
 container.id = 'prompt-wisp-container';
@@ -94,6 +195,24 @@ async function pasteWithFallback(text) {
   }
 }
 
+// Save prompt to API or local storage via background script
+async function savePromptToAPI(promptText) {
+  if (!promptText || !promptText.trim()) {
+    return { success: false, error: 'No content to save' };
+  }
+
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({
+      action: 'savePromptToAPI',
+      content: promptText,
+      title: `Prompt from ${window.location.hostname}`,
+      site: window.location.hostname
+    }, (response) => {
+      resolve(response);
+    });
+  });
+}
+
 // Copy button
 const copyBtn = document.createElement('button');
 copyBtn.textContent = 'Copy';
@@ -119,7 +238,7 @@ copyBtn.onclick = async () => {
   }
 };
 
-// Save button
+// Save button with API integration
 const saveBtn = document.createElement('button');
 saveBtn.textContent = 'Save';
 saveBtn.style = `
@@ -133,23 +252,53 @@ saveBtn.style = `
 saveBtn.onclick = async () => {
   const prompt = getCurrentPrompt();
   if (prompt) {
-    const site = window.location.hostname;
-    const url = window.location.href;
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
     
-    const { prompts = [] } = await chrome.storage.local.get('prompts');
-    prompts.unshift({
-      id: Date.now(),
-      text: prompt,
-      site,
-      url,
-      timestamp: new Date().toISOString()
-    });
+    const result = await savePromptToAPI(prompt);
     
-    await chrome.storage.local.set({ prompts });
-    saveBtn.textContent = 'Saved!';
-    setTimeout(() => saveBtn.textContent = 'Save', 2000);
+    if (result.success) {
+      if (result.location === 'server') {
+        saveBtn.textContent = 'Saved to Server!';
+        showNotification('✓ Prompt saved to Prompt Wisp!', '#10b981');
+      } else {
+        saveBtn.textContent = 'Saved Locally!';
+        showNotification('✓ Prompt saved locally!', '#f59e0b');
+      }
+    } else {
+      saveBtn.textContent = 'Save Failed!';
+      showNotification('✗ Failed to save prompt', '#ef4444');
+    }
+    
+    setTimeout(() => {
+      saveBtn.textContent = 'Save';
+      saveBtn.disabled = false;
+    }, 3000);
   }
 };
+
+// Notification helper
+function showNotification(message, color) {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: ${color};
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    z-index: 10000;
+    font-family: system-ui;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  `;
+  notification.textContent = message;
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.remove();
+  }, 3000);
+}
 
 // Paste button with dropdown
 const pasteBtn = document.createElement('button');
@@ -183,40 +332,87 @@ dropdown.style = `
 pasteBtn.onclick = async () => {
   dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
   
-  const { prompts = [] } = await chrome.storage.local.get('prompts');
+  // Try to load from API first, fallback to local
+  await loadPromptsForDropdown();
+};
+
+async function loadPromptsForDropdown() {
+  dropdown.innerHTML = '<div style="padding: 10px; text-align: center;">Loading...</div>';
+  
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({
+      action: 'getPromptsFromAPI'
+    }, (response) => {
+      if (response && response.success) {
+        displayPromptsInDropdown(response.prompts, response.source);
+      } else {
+        console.error('Failed to load prompts:', response?.error);
+        // Fallback to empty state
+        displayPromptsInDropdown([], 'error');
+      }
+      resolve();
+    });
+  });
+}
+
+function displayPromptsInDropdown(prompts, source) {
   dropdown.innerHTML = '';
+  
+  if (source === 'local') {
+    const header = document.createElement('div');
+    header.textContent = 'Local Prompts Only';
+    header.style = 'padding: 8px; background: #f59e0b; color: white; font-size: 12px; text-align: center;';
+    dropdown.appendChild(header);
+  } else if (source === 'error') {
+    const header = document.createElement('div');
+    header.textContent = 'Error Loading Prompts';
+    header.style = 'padding: 8px; background: #ef4444; color: white; font-size: 12px; text-align: center;';
+    dropdown.appendChild(header);
+  } else if (source === 'server') {
+    const header = document.createElement('div');
+    header.textContent = 'Server Prompts';
+    header.style = 'padding: 8px; background: #10b981; color: white; font-size: 12px; text-align: center;';
+    dropdown.appendChild(header);
+  }
   
   if (prompts.length === 0) {
     const empty = document.createElement('div');
-    empty.textContent = 'No saved prompts';
+    empty.textContent = source === 'error' ? 'Failed to load prompts' : 'No saved prompts';
     empty.style.padding = '10px';
+    empty.style.color = source === 'error' ? '#ef4444' : '#6b7280';
     dropdown.appendChild(empty);
   } else {
-    prompts.forEach(prompt => {
+    prompts.slice(0, 10).forEach(prompt => { // Limit to 10 most recent
       const item = document.createElement('div');
-      item.textContent = prompt.text.length > 50 
-        ? prompt.text.substring(0, 50) + '...' 
-        : prompt.text;
+      const content = prompt.content || prompt.text || '';
+      item.textContent = content.length > 50 
+        ? content.substring(0, 50) + '...' 
+        : content;
       item.style = `
         padding: 8px;
         cursor: pointer;
         border-bottom: 1px solid #eee;
       `;
+      item.onmouseenter = () => item.style.backgroundColor = '#f5f5f5';
+      item.onmouseleave = () => item.style.backgroundColor = '';
       item.onclick = async () => {
-        const result = await pasteWithFallback(prompt.text);
+        const result = await pasteWithFallback(content);
         if (result.success) {
           item.textContent = 'Pasted!';
+          showNotification('✓ Prompt pasted!', '#10b981');
         } else if (result.action === 'copied') {
           item.textContent = 'Copied to clipboard!';
+          showNotification('📋 Prompt copied to clipboard!', '#3b82f6');
         } else {
           item.textContent = 'Failed!';
+          showNotification('✗ Failed to paste prompt', '#ef4444');
         }
         setTimeout(() => dropdown.style.display = 'none', 1000);
       };
       dropdown.appendChild(item);
     });
   }
-};
+}
 
 document.addEventListener('click', (e) => {
   if (!pasteBtn.contains(e.target)) {

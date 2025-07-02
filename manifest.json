@@ -13,10 +13,15 @@
     "https://chat.deepseek.com/*",
     "https://chatgpt.com/*",
     "https://gemini.google.com/*",
-    "https://claude.ai/*"
+    "https://claude.ai/*",
+    "https://prompt-wisp.vercel.app/*",
+    "http://localhost:3000/*"
   ],
   "action": {
     "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
