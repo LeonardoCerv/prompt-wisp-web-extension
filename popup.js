@@ -136,21 +136,42 @@ class PromptWispExtension {
       return;
     }
 
-    container.innerHTML = prompts.map(prompt => `
-      <div class="prompt-item" onclick="window.promptWisp.usePrompt( '${this.escapeHtml(prompt.content || prompt.text || "")}')">
-        <div class="prompt-title">${this.escapeHtml(prompt.title || 'Untitled Prompt')}</div>
-        <div class="prompt-preview">${this.escapeHtml((prompt.content || prompt.text || '').substring(0, 100))}${(prompt.content || prompt.text || '').length > 100 ? '...' : ''}</div>
-      </div>
-    `).join('');
+    container.innerHTML = '';
+    
+    prompts.forEach(prompt => {
+      const promptElement = document.createElement('div');
+      promptElement.className = 'prompt-item';
+      
+      const titleElement = document.createElement('div');
+      titleElement.className = 'prompt-title';
+      titleElement.textContent = prompt.title || 'Untitled Prompt';
+      
+      const previewElement = document.createElement('div');
+      previewElement.className = 'prompt-preview';
+      const content = prompt.content || prompt.text || '';
+      previewElement.textContent = content.length > 100 ? content.substring(0, 100) + '...' : content;
+      
+      promptElement.appendChild(titleElement);
+      promptElement.appendChild(previewElement);
+      
+      // Add click handler
+      promptElement.addEventListener('click', () => {
+        this.usePrompt(content);
+      });
+      
+      container.appendChild(promptElement);
+    });
     
     if (isLocal) {
-      container.insertAdjacentHTML('afterbegin', '<p style="font-size: 12px; color: #ef4444; margin-bottom: 10px;">Showing local prompts only</p>');
+      const localWarning = document.createElement('p');
+      localWarning.style.cssText = 'font-size: 12px; color: #ef4444; margin-bottom: 10px;';
+      localWarning.textContent = 'Showing local prompts only';
+      container.insertBefore(localWarning, container.firstChild);
     }
   }
 
   async usePrompt(content) {
     try {
-      
       // Send to content script
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab) {
@@ -167,7 +188,16 @@ class PromptWispExtension {
         } else if (response && response.success) {
           this.showSuccess('Prompt inserted successfully!');
         } else {
-          this.showError('Prompt copied to clipboard as fallback');
+          // Show appropriate message based on response
+          if (response && response.message) {
+            if (response.message.includes('clipboard')) {
+              this.showSuccess('Prompt copied to clipboard as fallback');
+            } else {
+              this.showError(response.message);
+            }
+          } else {
+            this.showError('Failed to insert prompt');
+          }
         }
       });
       
