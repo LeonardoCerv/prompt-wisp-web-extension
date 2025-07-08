@@ -4,7 +4,7 @@
 ![JavaScript](https://img.shields.io/badge/Language-JavaScript-f7df1e?logo=javascript&logoColor=white)
 ![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Available-4285f4?logo=googlechrome&logoColor=white)
 ![Manifest](https://img.shields.io/badge/Manifest-V3-green)
-![Field](https://img.shields.io/badge/Field-Web%Extensions-white)
+![Field](https://img.shields.io/badge/Field-Web%20Extensions-white)
 ![License](https://img.shields.io/badge/License-MIT-brown)
 
 Effortlessly access and manage your favorite AI prompts right from your browser. This Chrome extension connects with famous AI platforms, letting you save, organize, and use your ```prompt wisp``` library in just a few clicks-no more copy-pasting or losing track of your best ideas.
